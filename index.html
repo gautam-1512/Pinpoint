@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinpoint</title>
+<meta name="pinpoint-build" content="2026-10-19.4">
+<link rel="stylesheet" href="styles.css?v=2026-10-19.4">
+<!-- pdf.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- mammoth.js (docx -> html) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<!-- JSZip (pptx parsing) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- Supabase (shared database, file storage, live updates, sign-in) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Your Supabase settings — edit config.js, not this file -->
+<script src="config.js?v=2026-10-19.4"></script>
+</head>
+<body>
+
+<canvas id="bg-canvas" class="bg-canvas"></canvas>
+
+<!-- ============ SIGN-IN / SETUP SCREEN ============ -->
+<div id="auth-screen" class="auth-screen hidden">
+  <div class="auth-card">
+    <div class="logo-row auth-logo">
+      <svg class="logo-mark logo-mark-lg" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="logoGradAuth" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="var(--accent-2)"/>
+            <stop offset="1" stop-color="var(--accent)"/>
+          </linearGradient>
+        </defs>
+        <rect x="3" y="3" width="58" height="58" rx="17" fill="url(#logoGradAuth)"/>
+        <circle cx="32" cy="32" r="15" fill="none" stroke="var(--accent-ink)" stroke-width="2.5" opacity="0.9"/>
+        <circle cx="32" cy="32" r="8" fill="none" stroke="var(--accent-ink)" stroke-width="2.5" opacity="0.9"/>
+        <circle cx="32" cy="32" r="3.2" fill="var(--accent-ink)"/>
+        <path d="M32 9v8M32 47v8M9 32h8M47 32h8" stroke="var(--accent-ink)" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+      </svg>
+      <div class="logo-text-group">
+        <span class="logo-word">Pinpoint</span>
+        <span class="logo-tagline-small">Precision review, anywhere</span>
+      </div>
+    </div>
+
+    <!-- Sign-in: team passcode (from a review link, or typed) or personal email -->
+    <div id="auth-signin">
+      <div id="pass-panel">
+        <h2>Enter the team passcode</h2>
+        <p class="auth-sub">Opened a review link? You'd normally be in already. Otherwise, type the passcode your team shared with you.</p>
+        <form id="pass-form" autocomplete="on">
+          <input type="password" id="auth-pass" placeholder="Team passcode" autocomplete="current-password">
+          <button type="submit" class="btn primary auth-submit" id="pass-submit">Open Pinpoint</button>
+        </form>
+        <button type="button" class="link-btn" id="show-email-signin">Sign in with your own email instead</button>
+      </div>
+
+      <div id="email-panel" class="hidden">
+        <h2>Sign in</h2>
+        <p class="auth-sub">Enter your email. We'll send you a one-click sign-in link — no password needed.</p>
+        <form id="auth-form" autocomplete="on">
+          <input type="email" id="auth-email" placeholder="you@company.com" autocomplete="email">
+          <button type="submit" class="btn primary auth-submit" id="auth-submit">Send sign-in link</button>
+        </form>
+        <!-- Shown after the email is sent: for emails that carry a code instead of (or as well as) a link -->
+        <form id="code-form" class="code-form hidden" autocomplete="off">
+          <div class="code-label">Email has a code instead? Enter it here:</div>
+          <div class="code-row">
+            <input type="text" id="auth-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456">
+            <button type="submit" class="btn" id="code-submit">Sign in</button>
+          </div>
+        </form>
+        <button type="button" class="link-btn" id="show-pass-signin">Use the team passcode instead</button>
+      </div>
+
+      <div id="auth-msg" class="auth-msg"></div>
+    </div>
+
+    <!-- Shown when config.js still has placeholders, or Supabase couldn't load -->
+    <div id="auth-setup" class="hidden">
+      <h2>Almost there</h2>
+      <div id="auth-setup-msg" class="auth-sub"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DASHBOARD SCREEN (home) ============ -->
+<div id="dashboard-screen" class="hidden">
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <div class="logo-row">
+          <svg class="logo-mark logo-mark-lg" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="logoGradHero" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="var(--accent-2)"/>
+                <stop offset="1" stop-color="var(--accent)"/>
+              </linearGradient>
+            </defs>
+            <rect x="3" y="3" width="58" height="58" rx="17" fill="url(#logoGradHero)"/>
+            <circle cx="32" cy="32" r="15" fill="none" stroke="var(--accent-ink)" stroke-width="2.5" opacity="0.9"/>
+            <circle cx="32" cy="32" r="8" fill="none" stroke="var(--accent-ink)" stroke-width="2.5" opacity="0.9"/>
+            <circle cx="32" cy="32" r="3.2" fill="var(--accent-ink)"/>
+            <path d="M32 9v8M32 47v8M9 32h8M47 32h8" stroke="var(--accent-ink)" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+          </svg>
+          <div class="logo-text-group">
+            <span class="logo-word">Pinpoint</span>
+            <span class="logo-tagline-small">Precision review, anywhere</span>
+          </div>
+        </div>
+        <div class="tagline-chip">Comment on anything</div>
+        <h1>Nail the exact spot</h1>
+        <p>Figma-style review comments on any HTML page, PDF, DOCX or PPTX — shared live with your whole team.</p>
+      </div>
+      <div class="hero-actions">
+        <div class="user-chip">
+          <span class="live-dot" id="dash-live-dot" title="Connecting…"></span>
+          <span id="user-email-label"></span>
+          <button class="btn small" id="sign-out-btn">Sign out</button>
+        </div>
+        <button class="btn primary lg" id="new-project-btn">+ New Project</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="dash-main">
+    <!-- Offered when this browser still has projects from the old, browser-only version -->
+    <div id="migrate-banner" class="migrate-banner hidden">
+      <div>
+        <strong>Found <span id="migrate-count">0</span> project(s) saved only in this browser.</strong>
+        <div class="migrate-sub">From the old version of Pinpoint. Upload them so everyone on the team can see them and their comments.</div>
+      </div>
+      <div class="migrate-actions">
+        <button class="btn small" id="migrate-dismiss-btn">Not now</button>
+        <button class="btn small primary" id="migrate-btn">Upload to shared workspace</button>
+      </div>
+    </div>
+
+    <div id="dash-loading" class="dash-empty">
+      <div class="dash-empty-icon">⏳</div>
+      <h2>Loading projects…</h2>
+    </div>
+    <div id="project-grid" class="project-grid"></div>
+    <div id="dash-empty" class="dash-empty hidden">
+      <div class="dash-empty-icon">🗂️</div>
+      <h2>No projects yet</h2>
+      <p>Create your first project to upload a file and start collecting comments.</p>
+      <button class="btn primary" id="empty-new-project-btn">+ New Project</button>
+    </div>
+  </main>
+</div>
+
+<!-- ============ VIEWER SCREEN ============ -->
+<div id="viewer-screen">
+  <div class="topbar">
+    <svg class="logo-mark logo-mark-sm" width="30" height="30" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex:0 0 auto;" aria-hidden="true">
+      <defs>
+        <linearGradient id="logoGradTop" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="var(--accent-2)"/>
+          <stop offset="1" stop-color="var(--accent)"/>
+        </linearGradient>
+      </defs>
+      <rect x="3" y="3" width="58" height="58" rx="17" fill="url(#logoGradTop)"/>
+      <circle cx="32" cy="32" r="15" fill="none" stroke="var(--accent-ink)" stroke-width="2.5" opacity="0.9"/>
+      <circle cx="32" cy="32" r="8" fill="none" stroke="var(--accent-ink)" stroke-width="2.5" opacity="0.9"/>
+      <circle cx="32" cy="32" r="3.2" fill="var(--accent-ink)"/>
+      <path d="M32 9v8M32 47v8M9 32h8M47 32h8" stroke="var(--accent-ink)" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+    </svg>
+    <button class="btn small" id="back-btn" title="Back to dashboard">⬅ Projects</button>
+    <span class="filename" id="viewer-filename">file.html</span>
+    <span class="filetype-badge" id="viewer-filetype">HTML</span>
+    <span class="live-pill" id="viewer-live-pill" title="Connecting…"><span class="live-dot" id="viewer-live-dot"></span><span id="viewer-live-label">Connecting</span></span>
+    <div class="spacer"></div>
+    <div class="mode-toggle">
+      <button id="mode-browse" class="active">Browse</button>
+      <button id="mode-comment" class="comment">Comment</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn small comments-toggle" id="comments-toggle-btn" title="Show or hide comments" aria-expanded="false" aria-controls="sidebar">💬 Comments <span class="toggle-count" id="toggle-count">0</span></button>
+    <button class="btn small" id="share-btn" title="Copy a link to this project for your team">🔗 Share</button>
+    <button class="btn small" id="export-comments-btn">⬇ Export comments</button>
+    <button class="btn small" id="import-comments-btn">⬆ Import</button>
+  </div>
+
+  <div id="warning-banner"></div>
+
+  <div class="body-area">
+    <div class="content-pane" id="content-pane">
+      <div class="content-inner" id="content-inner">
+        <!-- rendered content injected here per file type -->
+        <div class="pin-overlay" id="pin-overlay"></div>
+      </div>
+    </div>
+
+    <div class="sidebar" id="sidebar" aria-hidden="true">
+      <div class="sidebar-header">
+        <h2>Comments</h2>
+        <span class="count-badge" id="count-badge">0</span>
+        <button class="sidebar-close" id="sidebar-close" title="Hide comments (Esc)" aria-label="Hide comments">✕</button>
+      </div>
+      <div class="sidebar-list" id="sidebar-list">
+        <div class="empty-state">No comments yet. Switch to Comment mode and click anywhere on the content to add one.</div>
+      </div>
+      <div class="sidebar-footer">
+        <button class="btn small" id="sb-export-md">Export for Claude (.md)</button>
+        <button class="btn small" id="sb-export-json">Export JSON</button>
+        <button class="btn small" id="sb-import">Import comments</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="import-input-2" class="hidden-input" accept="application/json,.json">
+
+<!-- New project modal -->
+<div class="modal-backdrop hidden" id="project-modal">
+  <div class="modal">
+    <h3>New project</h3>
+    <p style="font-size:12.5px;color:var(--text-dim)">Give it a name and upload the file reviewers will comment on. Everyone on your team will see it.</p>
+    <input type="text" id="project-name-input" placeholder="e.g. Acme Marketing Site — v2">
+
+    <div class="dropzone" id="project-dropzone" style="margin-top:10px;">
+      <div class="icon">📄</div>
+      <div><strong>Click to choose a file</strong> or drag it here</div>
+      <div class="types">Supports .html, .pdf, .docx, .pptx · up to 50 MB</div>
+      <div class="types" id="project-file-chosen" style="color:var(--accent); font-weight:600; display:none;"></div>
+    </div>
+    <input type="file" id="project-file-input" class="hidden-input" accept=".html,.htm,.pdf,.docx,.pptx">
+
+    <div class="or-row">or</div>
+    <button class="btn" id="project-load-sample-btn">Use the sample page (no upload needed)</button>
+
+    <div class="actions">
+      <button class="btn" id="project-cancel-btn">Cancel</button>
+      <button class="btn primary" id="project-create-btn">Create project</button>
+    </div>
+  </div>
+</div>
+
+<!-- Name prompt modal -->
+<div class="modal-backdrop hidden" id="name-modal">
+  <div class="modal">
+    <h3>Your name</h3>
+    <p style="font-size:12.5px;color:var(--text-dim)">Shown next to your comments so your team knows who said what. Saved to your account.</p>
+    <input type="text" id="name-input" placeholder="e.g. Jane, VP of Design">
+    <div class="actions">
+      <button class="btn" id="name-skip-btn">Skip</button>
+      <button class="btn primary" id="name-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  // Ambient, slow-moving soft-glow blobs — Apple-marketing-page style.
+  // Sparse, low-opacity, no connecting lines. Same perf safeguards as before:
+  // requestAnimationFrame, pause on visibilitychange, capped particle count.
+  var canvas = document.getElementById("bg-canvas");
+  if (!canvas) return;
+  var ctx = canvas.getContext("2d");
+  var w, h, blobs = [];
+  var MAX_BLOBS = 5;
+  var running = true;
+  var rafId = null;
+  var COLORS = ["214,162,78", "120,150,255", "255,255,255"];
+
+  function resize() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = window.innerWidth;
+    h = window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function init() {
+    resize();
+    blobs = [];
+    var count = Math.min(MAX_BLOBS, Math.max(3, Math.floor((w * h) / 300000)));
+    for (var i = 0; i < count; i++) {
+      blobs.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: Math.min(w, h) * (0.18 + Math.random() * 0.16),
+        vx: (Math.random() - 0.5) * 0.10,
+        vy: (Math.random() - 0.5) * 0.10,
+        color: COLORS[i % COLORS.length],
+        alpha: 0.05 + Math.random() * 0.05
+      });
+    }
+  }
+
+  function step() {
+    if (!running) return;
+    ctx.clearRect(0, 0, w, h);
+    for (var i = 0; i < blobs.length; i++) {
+      var b = blobs[i];
+      b.x += b.vx; b.y += b.vy;
+      if (b.x < -b.r) b.x = w + b.r;
+      if (b.x > w + b.r) b.x = -b.r;
+      if (b.y < -b.r) b.y = h + b.r;
+      if (b.y > h + b.r) b.y = -b.r;
+
+      var grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+      grad.addColorStop(0, "rgba(" + b.color + "," + b.alpha + ")");
+      grad.addColorStop(1, "rgba(" + b.color + ",0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    rafId = requestAnimationFrame(step);
+  }
+
+  function start() {
+    if (rafId) return;
+    running = true;
+    rafId = requestAnimationFrame(step);
+  }
+  function stop() {
+    running = false;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  }
+
+  window.addEventListener("resize", init);
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) stop(); else start();
+  });
+
+  init();
+  start();
+})();
+</script>
+<script src="app.js?v=2026-10-19.4"></script>
+<script>
+  // Warn if app.js is an older copy than this page (e.g. it wasn't uploaded).
+  (function () {
+    if (window.__PINPOINT_BUILD === "2026-10-19.4") return;
+    var bar = document.createElement("div");
+    bar.setAttribute("role", "alert");
+    bar.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:9999;background:#b3261e;color:#fff;font:600 14px/1.4 -apple-system,Segoe UI,Arial,sans-serif;padding:10px 16px;text-align:center";
+    bar.textContent = "Pinpoint files are out of sync (app.js is an older copy). Upload index.html, app.js and styles.css together, wait 2 minutes, then press Ctrl+F5.";
+    document.body.appendChild(bar);
+  })();
+</script>
+</body>
+</html>
